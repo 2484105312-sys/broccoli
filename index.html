@@ -207,6 +207,7 @@
   .swatch.p1{background:#c98a3c}
   .swatch.p2{background:#7f8f7a}
   .swatch.p3{background:#a98f6a}
+  .swatch.p4{background:#8e9aa6}
   .empty{color:var(--muted);font-size:13.5px;padding:6px 0}
   .subtle{color:var(--muted);font-size:12.5px}
   details.guide{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);padding:16px 18px}
@@ -404,7 +405,8 @@
   var PILLARS = {
     ideal: { name: "理想进度条", tone: "p1" },
     weekend: { name: "周末 online", tone: "p2" },
-    paper: { name: "纸上出走", tone: "p3" }
+    paper: { name: "纸上出走", tone: "p3" },
+    other: { name: "其他", tone: "p4" }
   };
   var STATUS = {
     idea: { name: "灵感", cls: "" },
@@ -515,6 +517,7 @@
   var currentView = "today";
   var topicFilter = "all";
   var topicStatusFilter = "all";
+  var editingTopicId = "";
   var pendingScheduleTopicId = "";
   var flashId = "";
   var slideIndex = 0;
@@ -697,7 +700,6 @@
     if (!el) { return; }
     var now = new Date();
     var wd = now.getDay();
-    var rhythm = RHYTHM[wd];
     var counts = countTopics();
     var due = data.schedule.filter(function (s) { return !s.done && s.date <= todayISO(); }).sort(byDate);
     var upcoming = data.schedule.filter(function (s) { return !s.done && s.date > todayISO(); }).sort(byDate).slice(0, 2);
@@ -719,8 +721,24 @@
     var pick = photoPool.length ? photoPool[Math.floor(Math.random() * photoPool.length)] : null;
     var heroSrc = pick ? pick.src : HERO_PHOTO;
     var heroCap = pick ? (pick.entry.type + " · " + fmtCN(pick.entry.date)) : "";
-    var ctaLabel = due.length ? "去把这篇发出去" : rhythm.cta;
-    var ctaView = due.length ? "schedule" : rhythm.view;
+    var nextUp = upcoming[0] || null;
+    var actionTitle, actionBody, ctaLabel, ctaView;
+    if (due.length) {
+      actionTitle = "今天该发" + (due.length > 1 ? " " + due.length + " 篇" : " 1 篇");
+      actionBody = "到点了 —— 发出去,今天就完成了。";
+      ctaLabel = "去把这篇发出去";
+      ctaView = "schedule";
+    } else if (nextUp) {
+      actionTitle = "今天没有安排,休息吧";
+      actionBody = "下一件:" + fmtCN(nextUp.date) + " " + fmtWD(nextUp.date) + " " + nextUp.time + " 发《" + nextUp.title + "》";
+      ctaLabel = "看看排期";
+      ctaView = "schedule";
+    } else {
+      actionTitle = "今天没有安排,休息吧";
+      actionBody = "这周还没有排期 —— 去选题库挑一条,给它排个时间。";
+      ctaLabel = "去选题库挑一条";
+      ctaView = "topics";
+    }
 
     el.innerHTML =
       '<div class="hero-full">' +
@@ -732,8 +750,8 @@
 
       '<div class="band dark"><div class="band-inner">' +
         '<div class="band-head"><h2>今天该做的事</h2><span class="band-meta">' + WD[wd] + (due.length ? " · 该发了" : "") + '</span></div>' +
-        '<p class="action-title">' + esc(rhythm.title) + '</p>' +
-        '<p class="action-body">' + esc(rhythm.body) + '</p>' +
+        '<p class="action-title">' + esc(actionTitle) + '</p>' +
+        '<p class="action-body">' + esc(actionBody) + '</p>' +
         (dueRows ? '<div class="rows">' + dueRows + '</div>' : '') +
         pillButton(ctaLabel, ctaView) +
       '</div></div>' +
@@ -809,18 +827,33 @@
       var p = PILLARS[t.pillar] || PILLARS.ideal;
       var st = STATUS[t.status] || STATUS.idea;
       var hasSched = data.schedule.some(function (sc) { return sc.topicId === t.id && !sc.done; });
+      if (t.id === editingTopicId) {
+        return '<li><div class="li-main"><form data-form="topic-edit" data-id="' + t.id + '">' +
+          '<div class="fr"><input class="grow" type="text" name="title" value="' + esc(t.title) + '" required></div>' +
+          '<div class="fr" style="margin-top:8px">' +
+            '<select name="pillar" aria-label="栏目">' +
+              '<option value="ideal"' + (t.pillar === "ideal" ? " selected" : "") + '>理想进度条</option>' +
+              '<option value="weekend"' + (t.pillar === "weekend" ? " selected" : "") + '>周末 online</option>' +
+              '<option value="paper"' + (t.pillar === "paper" ? " selected" : "") + '>纸上出走</option>' +
+              '<option value="other"' + (t.pillar === "other" ? " selected" : "") + '>其他</option>' +
+            '</select>' +
+            '<button class="btn primary" type="submit">保存</button>' +
+            '<button class="btn" type="button" data-action="topic-edit-cancel">取消</button>' +
+          '</div></form></div></li>';
+      }
       return '<li' + (t.id === flashId ? ' class="flash"' : '') + '>' +
         '<div class="li-main"><div class="li-title">' + esc(t.title) + '</div>' +
         '<div class="li-meta"><span class="tag"><span class="swatch ' + p.tone + '"></span>' + p.name + '</span>' +
         '<button class="tag ' + st.cls + '" type="button" data-action="topic-status" data-id="' + t.id + '" title="点一下切换状态">' + st.name + '</button>' +
         (t.source ? '<span>' + esc(t.source) + '</span>' : '') + '</div></div>' +
         '<div class="li-actions">' +
+          '<button class="btn tiny" type="button" data-action="topic-edit" data-id="' + t.id + '">编辑</button>' +
           (hasSched
             ? '<button class="btn tiny" type="button" data-action="topic-unschedule" data-id="' + t.id + '">取消排期</button>'
             : '<button class="btn tiny" type="button" data-action="topic-schedule" data-id="' + t.id + '">排期</button>') +
         '<button class="btn tiny" type="button" data-action="topic-del" data-id="' + t.id + '">删除</button></div></li>';
     }).join("");
-    var filters = [["all", "全部栏目"], ["ideal", "理想进度条"], ["weekend", "周末 online"], ["paper", "纸上出走"]].map(function (f) {
+    var filters = [["all", "全部栏目"], ["ideal", "理想进度条"], ["weekend", "周末 online"], ["paper", "纸上出走"], ["other", "其他"]].map(function (f) {
       return '<button class="chip' + (topicFilter === f[0] ? " accent" : "") + '" type="button" data-action="filter" data-pillar="' + f[0] + '">' + f[1] + '</button>';
     }).join("");
     var statusChips = [["all", "全部状态"], ["idea", "灵感"], ["drafting", "写作中"], ["scheduled", "已排期"], ["published", "已发布"]].map(function (f) {
@@ -833,7 +866,7 @@
         '<div class="card"><h3>记一条选题</h3><form data-form="topic">' +
           '<div class="fr"><input class="grow" type="text" name="title" placeholder="想到什么写什么,比如:第一次做义工的三个瞬间" required></div>' +
           '<div class="fr"><select name="pillar" aria-label="归到哪个栏目">' +
-            '<option value="ideal">理想进度条</option><option value="weekend">周末 online</option><option value="paper">纸上出走</option>' +
+            '<option value="ideal">理想进度条</option><option value="weekend">周末 online</option><option value="paper">纸上出走</option><option value="other">其他</option>' +
           '</select><button class="btn primary" type="submit">存起来</button></div>' +
         '</form></div>' +
         '<div class="card">' +
@@ -843,6 +876,10 @@
         '</div>' +
       '</div></div>';
     if (flashId) { setTimeout(function () { flashId = ""; }, 400); }
+    if (editingTopicId) {
+      var fi = document.querySelector('#view-topics form[data-form="topic-edit"] input[name="title"]');
+      if (fi) { fi.focus(); }
+    }
   }
 
   function renderSchedule() {
@@ -1139,6 +1176,8 @@
       t.status = STATUS_ORDER[(STATUS_ORDER.indexOf(t.status) + 1) % STATUS_ORDER.length];
       save(); refresh(); toast("状态改成「" + STATUS[t.status].name + "」"); return;
     }
+    if (action === "topic-edit") { editingTopicId = id; renderTopics(); return; }
+    if (action === "topic-edit-cancel") { editingTopicId = ""; renderTopics(); return; }
     if (action === "topic-del") {
       askConfirm("删除这条选题?", function () {
         data.topics = data.topics.filter(function (x) { return x.id !== id; });
@@ -1246,6 +1285,17 @@
     event.preventDefault();
     var fd = new FormData(form);
     var kind = form.getAttribute("data-form");
+    if (kind === "topic-edit") {
+      var et = findTopic(form.getAttribute("data-id"));
+      var newTitle = String(fd.get("title") || "").trim();
+      if (!et || !newTitle) { return; }
+      et.title = newTitle.slice(0, 80);
+      var newPillar = String(fd.get("pillar") || et.pillar);
+      if (PILLARS[newPillar]) { et.pillar = newPillar; }
+      editingTopicId = "";
+      save(); refresh(); toast("改好了");
+      return;
+    }
     if (kind === "topic") {
       var title = String(fd.get("title") || "").trim();
       if (!title) { return; }
