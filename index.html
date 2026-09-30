@@ -670,6 +670,7 @@
       b.classList.toggle("is-active", b.getAttribute("data-view") === view);
     });
     window.scrollTo(0, 0);
+    if (view === "today") { renderToday(); }
   }
 
   function refresh() {
